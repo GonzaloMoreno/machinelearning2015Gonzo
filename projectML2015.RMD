@@ -1,0 +1,170 @@
+---
+title: "projectML"
+author: "Gonzalo Moreno"
+date: "Saturday, July 26, 2015"
+output: html_document
+---
+
+
+Background
+
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset)
+
+1) Preparation of directory and library
+
+```{r, echo=FALSE}
+setwd("D:/personal/data science/machine Learning JH/projectML2015")
+library(caret)
+library(randomForest)
+library(RCurl)
+library(dplyr)
+
+```
+
+2) Downloading Data
+
+
+```{r,echo=TRUE,cache=TRUE}
+
+training<-read.csv("pml-training.csv", header=TRUE, sep=",", dec=".")
+testing<-read.csv("pml-testing.csv", header=TRUE, sep=",", dec=".")
+
+```
+
+training has **`r ncol(training)`** variables of **`r nrow(training)`** rows. Data partition is created.
+
+```{r, echo=TRUE}
+
+inTrain<- createDataPartition(y= training$classe, p=0.6, list=FALSE)
+
+training_sample<-training[inTrain,]
+testing_sample<-training[-inTrain,]
+
+
+```
+
+The training data frame is divided in training_sample and testing_sample. training_sample has **`r nrow(training_sample)`** rows while testing_sample has **`r nrow(testing_sample)`** rows. 
+
+
+
+3) Cleaning and Filtering of Data
+
+
+The purpose is discarding of irrelevant, NA´s or with NULL variance variables. First we clean and preProcess training_sample data.
+
+
+```{r, echo=TRUE}
+
+## Training Data
+
+
+training2<-subset(training_sample,select=-c(classe))
+
+## nonzeroVar is the problematic vector with unique value 
+
+nonzeroVar<- nearZeroVar(training2, saveMetrics = FALSE)
+colnameswithNA<-colnames(training2[ ,colSums(is.na(training2)) > 0])
+columnwithNA<-which(names(training2) %in% colnameswithNA)
+
+##  it is choosen only variables without NA and with Variance
+columnstodelete<-unique(c(columnwithNA,nonzeroVar))
+training3 <- training2[,-c(columnstodelete)]
+
+## numeric_vector is the logical vector, which determines if a predictor is numerical or is not
+numeric_vector <- as.vector(sapply(training3, is.numeric))
+only_numeric<-names(training3[,numeric_vector==TRUE])
+training_numeric<- training3[,c(only_numeric)]
+columnsnumeric<-which(names(training3) %in% only_numeric)
+
+
+
+
+
+```
+
+training3 has **`r ncol(training_numeric)`**  numeric variables. PCA analysis is executed and Variables correlated are reemplaced by PCA variables.  PCA is applied only to numeric variables
+This is done for training and testing data
+
+```{r,echo=TRUE, cache=TRUE}
+
+preproc <- preProcess(training_numeric, method="pca")
+train.pca<-predict(preproc, training_numeric) ## PCA variables are created
+
+##correlated variables is deleted because they aren´t needed anymore. Instead of them, PCA variables will be used
+classe<-training_sample$classe
+df_training<-cbind(training3[,-c(columnsnumeric)],train.pca,classe) ##variables correlated are deleted
+
+
+```
+
+PCA analysis is executed and  **`r ncol(train.pca)`** PCA variables reemplaces  
+**`r ncol(training_numeric)`**  variables correlated of the training data.  PCA is applied only to numeric variables.The same proccess is done for testing data
+
+
+
+4) Cross Validation and Analysis of training data on Random Forest Model
+
+Because of the characteristics of data, random forest could be a good model. However, cross validation is incorporated in the analysis and if error.cv is low and stable with k=10, random forest 
+will be the chosen model.
+
+```{r,echo=TRUE, cache=TRUE}
+library(randomForest)
+
+
+rf.cv <- rfcv(df_training[,-c(classe)], df_training$classe, cv.fold=10)
+with(rf.cv, plot(n.var, error.cv, type="b", col="red"))
+
+```
+
+The Cross validation is plotted and found that the mean of error.cv is
+**`r mean(rf.cv$error.cv)`** with any number of variables. This is an excelent result and supports to Random Forest as chosen model.
+
+
+```{r, echo=TRUE, cache=TRUE}
+
+## the plot suggests to use Random Forest
+
+set.seed(12345)
+modfit<-randomForest(classe ~., data=df_training)
+
+
+rf.pred.training=predict(modfit,df_training,type="class")
+confussion.training<-confusionMatrix(rf.pred.training, df_training$classe)
+confussion.training
+
+
+```
+
+
+
+
+The accuracy is of 
+**`r round(confussion.training$overall[1],2)*100`**% with training data. Now the confusion matrix is evaluated with testing_sample data
+
+
+6) Confusion Matrix and accuracy
+
+I use testing_sample to predict and check performance of accuracy. First at all, testing data has 
+the same cleaning preProccess and getting of PCA variables
+  
+```{r, echo=TRUE}
+
+testing_sample2<-subset(testing_sample,select=-c(classe))
+testing_sample2 <- testing_sample2[,-c(columnstodelete)]
+testing_numeric<- testing_sample2[,c(only_numeric)]
+testing.pca<-predict(preproc, testing_numeric) ## PCA variables are created
+classe<-testing_sample$classe
+df_testing<-cbind(testing_sample2[,-c(columnsnumeric)],testing.pca,classe)
+
+set.seed(12345)
+rf.pred=predict(modfit,df_testing,type="class")
+predMatrix = with(df_testing,table(rf.pred,classe))
+confussion.testing<-confusionMatrix(rf.pred, df_testing$classe)
+confussion.testing
+```
+The accuracy is of  **`r round(confussion.testing$overall[1],2)*100`** % with testing data.
+ 
+
+
+  
