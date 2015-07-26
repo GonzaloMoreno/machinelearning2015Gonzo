@@ -36,6 +36,9 @@ training has **`r ncol(training)`** variables of **`r nrow(training)`** rows. Da
 
 ```{r, echo=TRUE}
 
+
+training<-subset(training,select=-c(cvtd_timestamp))
+
 inTrain<- createDataPartition(y= training$classe, p=0.6, list=FALSE)
 
 training_sample<-training[inTrain,]
@@ -60,6 +63,7 @@ The purpose is discarding of irrelevant, NA´s or with NULL variance variables. F
 
 
 training2<-subset(training_sample,select=-c(classe))
+
 
 ## nonzeroVar is the problematic vector with unique value 
 
@@ -93,7 +97,7 @@ train.pca<-predict(preproc, training_numeric) ## PCA variables are created
 
 ##correlated variables is deleted because they aren´t needed anymore. Instead of them, PCA variables will be used
 classe<-training_sample$classe
-df_training<-cbind(training3[,-c(columnsnumeric)],train.pca,classe) ##variables correlated are deleted
+df_training<-cbind(user_name=training3[,-c(columnsnumeric)],train.pca) ##variables correlated are deleted
 
 
 ```
@@ -112,13 +116,12 @@ will be the chosen model.
 library(randomForest)
 
 
-rf.cv <- rfcv(df_training[,-c(classe)], df_training$classe, cv.fold=10)
+rf.cv <- rfcv(df_training, classe, cv.fold=10)
 with(rf.cv, plot(n.var, error.cv, type="b", col="red"))
 
 ```
 
-The Cross validation is plotted and found that the mean of error.cv is
-**`r mean(rf.cv$error.cv)`** with any number of variables. This is an excelent result and supports to Random Forest as chosen model.
+The Cross validation is plotted and found that the mean of error.cv  trend to 0 with more than 12 variables. This is an excelent orientation to choose Random Forest as chosen model (with the all PCA variables).
 
 
 ```{r, echo=TRUE, cache=TRUE}
@@ -130,7 +133,7 @@ modfit<-randomForest(classe ~., data=df_training)
 
 
 rf.pred.training=predict(modfit,df_training,type="class")
-confussion.training<-confusionMatrix(rf.pred.training, df_training$classe)
+confussion.training<-confusionMatrix(rf.pred.training, classe)
 confussion.training
 
 
@@ -155,12 +158,15 @@ testing_sample2 <- testing_sample2[,-c(columnstodelete)]
 testing_numeric<- testing_sample2[,c(only_numeric)]
 testing.pca<-predict(preproc, testing_numeric) ## PCA variables are created
 classe<-testing_sample$classe
-df_testing<-cbind(testing_sample2[,-c(columnsnumeric)],testing.pca,classe)
+df_testing<-cbind(user_name=testing_sample2[,-c(columnsnumeric)],testing.pca)
+## df_testing<-cbind(testing_sample2[,-c(columnsnumeric)],testing.pca)
+
+
 
 set.seed(12345)
 rf.pred=predict(modfit,df_testing,type="class")
 predMatrix = with(df_testing,table(rf.pred,classe))
-confussion.testing<-confusionMatrix(rf.pred, df_testing$classe)
+confussion.testing<-confusionMatrix(rf.pred, classe)
 confussion.testing
 ```
 The accuracy is of  **`r round(confussion.testing$overall[1],2)*100`** % with testing data.
